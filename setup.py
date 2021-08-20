@@ -15,7 +15,7 @@ name="jupyterlab-dmn"
 with open(os.path.join(HERE, 'package.json')) as f:
     version = json.load(f)['version']
 
-lab_path = os.path.join(HERE, name, "labextension")
+lab_path = os.path.join(HERE, name.replace("-", "_"), "labextension")
 
 # Representative files that should exist after a successful build
 ensured_targets = [
