@@ -36,28 +36,87 @@ export class OutputWidget extends Widget implements IRenderMime.IRenderer {
    * Render dmn into this widget's node.
    */
   async renderModel(model: IRenderMime.IMimeModel): Promise<void> {
-    this._dmn = new DmnViewer({
-      additionalModules: [],
-    });
     try {
+      let changed = false;
+      if (!this._dmn) {
+        this._dmn = new DmnViewer({
+          additionalModules: [],
+        });
+        changed = true;
+      }
+      if (
+        model.data[this._mimeType] &&
+        model.data[this._mimeType] !== this._xml
+      ) {
+        this._xml = model.data[this._mimeType] as string;
+        await this._dmn.importXML(model.data[this._mimeType]);
+        changed = true;
+      }
+      if (
+        model.data['application/dmn+json'] &&
+        model.data['application/dmn+json'] !== this._json
+      ) {
+        this._json = model.data['application/dmn+json'] as string;
+        changed = true;
+      }
+      if (this._dmn) {
+        this._dmn.attachTo(this.node);
+        /* @ts-ignore */
+        window.foo = this.node;
+        /* @ts-ignore */
+        window.bar = this._dmn;
+      }
       const config = JSON.parse(
         (model.data['application/dmn+json'] as string) || '{}'
       );
-      await this._dmn.importXML(model.data[this._mimeType]);
-      if (config.style) {
-        for (const name of Object.keys(config.style)) {
-          this.node.style.setProperty(name, config.style[name]);
+      if (this._dmn && changed) {
+        if (config.style) {
+          for (const name of Object.keys(config.style)) {
+            this.node.style.setProperty(name, config.style[name]);
+          }
+        }
+        const view: string =
+          this._dmn
+            .getViews()
+            .find((view: any) => view.id === config.decisionId) ||
+          this._dmn
+            .getViews()
+            .find((view: any) => view.id.startsWith('Decision'));
+        await this._dmn.open(view);
+        for (const el of this.node.getElementsByClassName('view-drd')) {
+          (el as any)?.style?.setProperty('display', 'none');
+        }
+        for (const rule of config.matchedRules || []) {
+          if (rule && rule.ruleId) {
+            const xpathResult = document.evaluate(
+              `//td[@data-row-id="${rule.ruleId}" or @data-element-id="${rule.ruleId}"]`,
+              document,
+              null,
+              XPathResult.ORDERED_NODE_ITERATOR_TYPE,
+              null
+            );
+            const elements = [];
+            let element = xpathResult.iterateNext();
+            while (element) {
+              elements.push(element);
+              element = xpathResult.iterateNext();
+            }
+            for (const el of elements) {
+              (el as any)?.style?.setProperty('background-color', '#add6eb');
+            }
+          }
         }
       }
-      this._dmn.attachTo(this.node);
     } catch (e) {
-      this.node.textContent = `${e}`;
+      console.warn(e);
     }
     return Promise.resolve();
   }
 
-  private _dmn: any;
-  private _mimeType: string;
+  private _dmn: any = '';
+  private _xml: string = '';
+  private _json: string = '';
+  private _mimeType: string = '';
 }
 
 /**
@@ -75,7 +134,7 @@ export const rendererFactory: IRenderMime.IRendererFactory = {
 const extension: IRenderMime.IExtension = {
   id: 'jupyterlab-dmn:plugin',
   rendererFactory,
-  rank: 100,
+  rank: 70, // svg is 80, png 90
   dataType: 'string',
   fileTypes: [
     {
@@ -85,7 +144,7 @@ const extension: IRenderMime.IExtension = {
     },
   ],
   documentWidgetFactoryOptions: {
-    name: 'JupyterLab DMN viewer',
+    name: 'A JupyterLab extension for rendering DMN files',
     primaryFileType: 'dmn',
     fileTypes: ['dmn'],
     defaultFor: ['dmn'],
